@@ -97,7 +97,7 @@ def ConvertPage(currentPage, baseName, pagesTotal, ratio, offPages):
   os.chdir("..")
   shutil.rmtree("Page" + str(currentPage + offPages + 1))
 
-def main(argv):
+def main():
 	# Global declaration
 	global imagesTotal
 	global ratio
@@ -127,4 +127,4 @@ def main(argv):
 	print("Convert finished.\r")
 
 if __name__ == "__main__":
-    main(sys.argv)
+    main()
