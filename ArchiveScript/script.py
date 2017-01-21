@@ -22,11 +22,11 @@ def AppendImgs(startImg, endImg, endName, width):
 	if width == True:
 		for item in range(startImg, endImg):
 			fromFiles = fromFiles + str(item) + ".jpg "
-		subprocess.run("\"../../ImageMagick/convert\" " + fromFiles + "+append " + endName + ".jpg", shell=True, check=True)
+		subprocess.run("convert " + fromFiles + "+append " + endName + ".jpg", shell=True, check=True)
 	else:
 		for item in range(startImg, endImg):
 			fromFiles = fromFiles + "temp" + str(item) + ".jpg "
-		subprocess.run("\"../../ImageMagick/convert\" " + fromFiles + "-append " + endName + ".jpg", shell=True, check=True)
+		subprocess.run("convert " + fromFiles + "-append " + endName + ".jpg", shell=True, check=True)
 
 def CheckUrlExists(url):
 	try:
