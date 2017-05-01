@@ -5,9 +5,10 @@ import subprocess, sys, urllib.request, urllib.error, re, os, argparse, time, sh
 from joblib import *
 
 # Global Variables
-imagesTotal = 54
-regex = r"(http:\/\/.+)_(\d\d\d\d)_jpg_\/(\d)_(\d).jpg"
-ratio = {54: 9, 49: 7, 48: 8, 45: 7, 42: 7, 40: 8, 36:6, 35: 7, 30: 6, 28: 7, 24: 6, 25: 5, 16: 4, 12:3}
+imagesTotal = 72
+regex = r"(http:\/\/.+)(\d\d\d\d)_jpg_\/(\d)_(\d).jpg"
+regexFullPage = r"(http:\/\/.+)(\d\d\d\d).jpg"
+ratio = {72: 8, 70:10, 67:9, 56:7, 54: 8, 49: 7, 48: 8, 45: 7, 42: 7, 40: 8, 36:6, 35: 7, 30: 6, 28: 7, 25: 5, 24: 6, 20:4, 18:3, 16: 4, 15:3, 12:3, 1:1}
 
 # Functions
 def DownloadImage(url, img):
@@ -65,6 +66,14 @@ def FindRightUrl(baseURL, currentPage, currentImage, zoom, regex):
 		newUrl = match.group(1) + "_" + str(int(pageNumber) + currentPage).zfill(4) + "_jpg_/" + str(zoom) + "_" + str(int(imageNumber) + currentImage) + ".jpg"
 		return newUrl
 
+def FindRightUrlFullPage(baseURL, currentPage, regex):
+	# Start matching
+	if re.search(regex, baseURL):
+		match = re.search(regex, baseURL)
+		pageNumber = match.group(2)
+		newUrl = match.group(1) + str(int(pageNumber) + currentPage).zfill(4) + ".jpg"
+		return newUrl
+
 def DownloadPage(currentPage, imagesTotal, baseURL, offPages, regex):
 		# Download
 		os.makedirs("Page" + str(currentPage + offPages + 1), exist_ok=True)
@@ -77,6 +86,14 @@ def DownloadPage(currentPage, imagesTotal, baseURL, offPages, regex):
 			  break
 		os.chdir("..")
 
+def DownloadFullPage(currentPage, baseURL, offPages, regex):
+		# Download
+		os.makedirs("Page" + str(currentPage + offPages + 1), exist_ok=True)
+		os.chdir("Page" + str(currentPage + offPages + 1))
+		url = FindRightUrlFullPage(baseURL, currentPage + offPages, regex)
+		error = DownloadImage(url, "1.jpg")
+		os.chdir("..")
+
 def ConvertPage(currentPage, baseName, pagesTotal, ratio, offPages):
 	# Convertion
   os.chdir("Page" + str(currentPage + offPages + 1))
@@ -84,7 +101,7 @@ def ConvertPage(currentPage, baseName, pagesTotal, ratio, offPages):
   try:
     imagesPerRow = ratio[fileNumber]
   except:
-    print("Page " + currentPage + ": Ratio images per row / total images unknown, " + str(fileNumber))
+    print("Page " + str(currentPage) + ": Ratio images per row / total images unknown, " + str(fileNumber))
     return
   column = int(fileNumber / imagesPerRow)
   fileNumber = imagesPerRow*column
@@ -97,28 +114,35 @@ def ConvertPage(currentPage, baseName, pagesTotal, ratio, offPages):
   os.chdir("..")
   shutil.rmtree("Page" + str(currentPage + offPages + 1))
 
-def main():
+def main(argv):
 	# Global declaration
 	global imagesTotal
 	global ratio
 	global regex
+	global regexFullPage
 	# Start main
 	parser = argparse.ArgumentParser(description='Mnesys2 download helper script written in Python3. Requires joblib (pip install joblib)')
-	parser.add_argument('-u', '--url', dest="url",help='url of the first image')
+	parser.add_argument('-u', '--url', dest="url", help='url of the first image')
 	parser.add_argument('-n', '--name', dest="name", default="Archive", help='name for both folder and pages')
 	parser.add_argument('-p', '--pages', type=int, dest="pages", default=1, help='total number of pages')
 	parser.add_argument('-o', '--off-pages', type=int, dest="offPages", default=0, help='set an off-pages number')
+	parser.add_argument('-f', '--full-page', type=bool, dest="fullpage", default=False, help="one image per page, default False")
 	args = parser.parse_args()
 	# Set the global variables
 	baseURL=args.url
 	baseName=args.name
 	pagesTotal=args.pages
 	offPages=args.offPages
+	fullpage=args.fullpage
 	# Starting download
 	os.makedirs(baseName, exist_ok=True)
 	os.chdir(baseName)
 	print ("Download started.\r")
-	Parallel(n_jobs=int(20))(delayed(DownloadPage)(j, imagesTotal, baseURL, offPages, regex) for j in range(pagesTotal))
+	if fullpage == False:
+		Parallel(n_jobs=int(20))(delayed(DownloadPage)(j, imagesTotal, baseURL, offPages, regex) for j in range(pagesTotal))
+	else:
+		for j in range(pagesTotal):
+			DownloadFullPage(j, baseURL, offPages, regexFullPage)
 	print ("Download finished.\r")
 	sys.stdout.flush()
 	# Starting converting
@@ -127,4 +151,4 @@ def main():
 	print("Convert finished.\r")
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv)
