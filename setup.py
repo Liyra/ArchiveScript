@@ -6,7 +6,7 @@ setup(
     name='ArchiveScript',
     version="1",
     author='Alexandre Deneuve',
-    author_email='alexandre.deneuve@wanadoo.fr',
+    author_email='alexandre.deneuve@outlook.com',
     packages=find_packages(),
     entry_points = {
         'console_scripts':
@@ -16,5 +16,6 @@ setup(
     },
     install_requires=[
         "joblib",
+        "Pillow"
     ],
 )

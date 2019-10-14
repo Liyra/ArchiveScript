@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 # Imports
 import subprocess
@@ -11,19 +11,20 @@ import argparse
 import time
 import shutil
 import http.client
+from PIL import Image
 from joblib import *
 
 
 # Global Variables
-imagesTotal = 72
-regex = r"(http:\/\/.+)(\d\d\d\d\d)_jpg_\/(\d)_(\d).jpg"
-regexFullPage = r"(http:\/\/.+)(\d\d\d\d).jpg(.+)"
-ratio = {72: 8, 70: 10, 67: 9, 56: 7, 54: 8, 49: 7, 48: 6, 45: 7, 42: 7, 40: 8, 36: 6,
-         35: 7, 30: 6, 28: 7, 27: 9, 25: 5, 24: 6, 20: 4, 18: 3, 16: 4, 15: 3, 12: 3, 8: 8, 1: 1}
+IMAGES_TOTAL = 72
+REGEX = r"(http:\/\/.+)(\d\d\d\d)_jpg_\/(\d)_(\d).jpg"
+REGEX_FULL_PAGE = r"(http:\/\/.+)(\d\d\d\d).jpg(.+)"
+RATIO = {72: 8, 70: 10, 67: 9, 56: 7, 54: 8, 49: 7, 48: 8, 45: 7, 42: 7, 40: 8, 36: 6,
+         35: 7, 30: 6, 28: 7, 27: 9, 25: 5, 24: 6, 20: 5, 18: 3, 16: 4, 15: 5, 12: 3, 8: 8, 1: 1}
 
 
 # Functions
-def DownloadImage(url, img):
+def download_image(url, img):
     try:
         urllib.request.urlretrieve(url, img)
     except:
@@ -31,24 +32,38 @@ def DownloadImage(url, img):
     return True
 
 
-def AppendImgs(startImg, endImg, endName, width):
-    try:
-        fromFiles = ""
-        if width == True:
-            for item in range(startImg, endImg):
-                fromFiles = fromFiles + str(item) + ".jpg "
-            subprocess.run("\"../../ImageMagick/convert\" " + fromFiles +
-                           "+append " + endName + ".jpg", shell=True, check=True)
+def create_image(image_list, end_name, is_horizontal=True):
+    images = list(map(Image.open, image_list))
+    widths, heights = zip(*(i.size for i in images))
+
+    total_width = sum(widths) if is_horizontal else max(widths)
+    max_height = max(heights) if is_horizontal else sum(heights)
+
+    new_im = Image.new('RGB', (total_width, max_height))
+
+    x_offset = 0
+    y_offset = 0
+    for im in images:
+        new_im.paste(im, (x_offset, y_offset))
+        if is_horizontal:
+            x_offset += im.size[0]
         else:
-            for item in range(startImg, endImg):
-                fromFiles = fromFiles + "temp" + str(item) + ".jpg "
-            subprocess.run("\"../../ImageMagick/convert\" " + fromFiles +
-                           "-append " + endName + ".jpg", shell=True, check=True)
+            y_offset += im.size[1]
+
+    new_im.save(str(end_name) + '.jpg')
+
+
+def append_images(start_image, end_image, end_name, is_horizontal):
+    try:
+        image_list = []
+        for item in range(start_image, end_image):
+            image_list.append(str(item) + ".jpg" if is_horizontal else "temp" + str(item) + ".jpg")
+        create_image(image_list, end_name, is_horizontal)
     except Exception as e:
         print('Error: ' + str(e))
 
 
-def CheckUrlExists(url):
+def check_url_exists(url):
     try:
         urllib.request.urlopen(url, timeout=10)
     except urllib.error.HTTPError as e:
@@ -60,103 +75,98 @@ def CheckUrlExists(url):
     return True
 
 
-def InitializeZoomVariable(currentPage, baseURL, regex):
+def initialize_zoom_variable(current_page, base_url, regex):
     # Start matching
-    if re.search(regex, baseURL):
-        match = re.search(regex, baseURL)
+    if re.search(regex, base_url):
+        match = re.search(regex, base_url)
         pageNumber = match.group(2)
         tempZoom = match.group(3)
         imageNumber = match.group(4)
-        newUrl = match.group(1) + "_" + str(int(pageNumber) + currentPage).zfill(
+        newUrl = match.group(1) + "_" + str(int(pageNumber) + current_page).zfill(
             4) + "_jpg_/" + str(int(tempZoom) + 1) + "_" + str(int(imageNumber)) + ".jpg"
-        if CheckUrlExists(newUrl) == True:
+        if check_url_exists(newUrl) == True:
             zoom = int(tempZoom) + 1
             return zoom
-        newUrl = match.group(1) + "_" + str(int(pageNumber) + currentPage).zfill(
+        newUrl = match.group(1) + "_" + str(int(pageNumber) + current_page).zfill(
             4) + "_jpg_/" + str(tempZoom) + "_" + str(int(imageNumber)) + ".jpg"
-        if CheckUrlExists(newUrl) == True:
+        if check_url_exists(newUrl) == True:
             zoom = int(tempZoom)
             return zoom
-        newUrl = match.group(1) + "_" + str(int(pageNumber) + currentPage).zfill(
+        newUrl = match.group(1) + "_" + str(int(pageNumber) + current_page).zfill(
             4) + "_jpg_/" + str(int(tempZoom) - 1) + "_" + str(int(imageNumber)) + ".jpg"
         zoom = int(tempZoom) - 1
         return zoom
 
 
-def FindRightUrl(baseURL, currentPage, currentImage, zoom, regex):
+def find_right_url(base_url, current_page, current_image, zoom, regex):
     # Start matching
-    if re.search(regex, baseURL):
-        match = re.search(regex, baseURL)
+    if re.search(regex, base_url):
+        match = re.search(regex, base_url)
         pageNumber = match.group(2)
         imageNumber = match.group(4)
-        newUrl = match.group(1) + "_" + str(int(pageNumber) + currentPage).zfill(
-            4) + "_jpg_/" + str(zoom) + "_" + str(int(imageNumber) + currentImage) + ".jpg"
+        newUrl = match.group(1) + "_" + str(int(pageNumber) + current_page).zfill(
+            4) + "_jpg_/" + str(zoom) + "_" + str(int(imageNumber) + current_image) + ".jpg"
         return newUrl
 
 
-def FindRightUrlFullPage(baseURL, currentPage, regex):
+def find_right_url_full_page(base_url, current_page, regex):
     # Start matching
-    if re.search(regex, baseURL):
-        match = re.search(regex, baseURL)
+    if re.search(regex, base_url):
+        match = re.search(regex, base_url)
         pageNumber = match.group(2)
         newUrl = match.group(1) + str(int(pageNumber) +
-                                      currentPage).zfill(4) + ".jpg" + match.group(3)
+                                      current_page).zfill(4) + ".jpg" + match.group(3)
         return newUrl
 
 
-def DownloadPage(currentPage, imagesTotal, baseURL, offPages, regex):
-        # Download
-    os.makedirs("Page" + str(currentPage + offPages + 1), exist_ok=True)
-    os.chdir("Page" + str(currentPage + offPages + 1))
-    zoom = InitializeZoomVariable(currentPage + offPages, baseURL, regex)
-    for currentImage in range(0, imagesTotal):
-        url = FindRightUrl(baseURL, currentPage + offPages,
-                           currentImage, zoom, regex)
-        error = DownloadImage(url, str(currentImage + 1) + ".jpg")
+def download_page(current_page, base_url, off_pages, regex):
+    # Download
+    os.makedirs("Page" + str(current_page + off_pages + 1), exist_ok=True)
+    os.chdir("Page" + str(current_page + off_pages + 1))
+    zoom = initialize_zoom_variable(current_page + off_pages, base_url, regex)
+    for current_image in range(0, IMAGES_TOTAL):
+        url = find_right_url(base_url, current_page + off_pages,
+                             current_image, zoom, regex)
+        error = download_image(url, str(current_image + 1) + ".jpg")
         if error == False:
             break
     os.chdir("..")
 
 
-def DownloadFullPage(currentPage, baseURL, offPages, regex):
+def download_full_page(current_page, base_url, off_pages, regex):
     # Download
-    os.makedirs("Page" + str(currentPage + offPages + 1), exist_ok=True)
-    os.chdir("Page" + str(currentPage + offPages + 1))
-    url = FindRightUrlFullPage(baseURL, currentPage + offPages, regex)
-    error = DownloadImage(url, "1.jpg")
+    os.makedirs("Page" + str(current_page + off_pages + 1), exist_ok=True)
+    os.chdir("Page" + str(current_page + off_pages + 1))
+    url = find_right_url_full_page(base_url, current_page + off_pages, regex)
+    error = download_image(url, "1.jpg")
     os.chdir("..")
 
 
-def ConvertPage(currentPage, baseName, pagesTotal, ratio, offPages):
+def convert_page(current_page, base_name, pages_total, off_pages):
     # Convertion
-    os.chdir("Page" + str(currentPage + offPages + 1))
+    os.chdir("Page" + str(current_page + off_pages + 1))
     fileNumber = len(os.listdir(os.getcwd()))
     try:
-        imagesPerRow = ratio[fileNumber]
+        imagesPerRow = RATIO[fileNumber]
     except:
-        print("Page " + str(currentPage) +
+        print("Page " + str(current_page) +
               ": Ratio images per row / total images unknown, " + str(fileNumber))
         return
     column = int(fileNumber / imagesPerRow)
     fileNumber = imagesPerRow*column
     count = 1
     for c in range(1, fileNumber + 1, imagesPerRow):
-        AppendImgs(c, c + imagesPerRow, "temp" + str(count), True)
+        append_images(c, c + imagesPerRow, "temp" + str(count), True)
         count = count + 1
-    AppendImgs(1, column + 1, "\"" + baseName + " - Page " +
-               str(currentPage + offPages + 1) + "\"", False)
-    shutil.move(baseName + " - Page " + str(currentPage + offPages + 1) + ".jpg",
-                "../" + baseName + " - Page " + str(currentPage + offPages + 1) + ".jpg")
+    append_images(1, column + 1, base_name + " - Page " +
+                  str(current_page + off_pages + 1), False)
+    shutil.move(base_name + " - Page " + str(current_page + off_pages + 1) + ".jpg",
+                "../" + base_name + " - Page " + str(current_page + off_pages + 1) + ".jpg")
     os.chdir("..")
-    shutil.rmtree("Page" + str(currentPage + offPages + 1))
+    shutil.rmtree("Page" + str(current_page + off_pages + 1))
 
 
 def main(argv):
-    # Global declaration
-    global imagesTotal
-    global ratio
-    global regex
-    global regexFullPage
     # Start main
     parser = argparse.ArgumentParser(
         description='Mnesys2 download helper script written in Python3. Requires joblib (pip install joblib)')
@@ -167,32 +177,32 @@ def main(argv):
     parser.add_argument('-p', '--pages', type=int, dest="pages",
                         default=1, help='total number of pages')
     parser.add_argument('-o', '--off-pages', type=int,
-                        dest="offPages", default=0, help='set an off-pages number')
+                        dest="off_pages", default=0, help='set an off-pages number')
     parser.add_argument('-f', '--full-page', type=bool, dest="fullpage",
                         default=False, help="one image per page, default False")
     args = parser.parse_args()
     # Set the global variables
-    baseURL = args.url
-    baseName = args.name
-    pagesTotal = args.pages
-    offPages = args.offPages
+    base_url = args.url
+    base_name = args.name
+    pages_total = args.pages
+    off_pages = args.off_pages
     fullpage = args.fullpage
     # Starting download
-    os.makedirs(baseName, exist_ok=True)
-    os.chdir(baseName)
+    os.makedirs(base_name, exist_ok=True)
+    os.chdir(base_name)
     print("Download started.\r")
     if fullpage == False:
-        Parallel(n_jobs=int(20))(delayed(DownloadPage)(j, imagesTotal,
-                                                       baseURL, offPages, regex) for j in range(pagesTotal))
+        Parallel(n_jobs=int(20))(delayed(download_page)(
+            j, base_url, off_pages, REGEX) for j in range(pages_total))
     else:
-        for j in range(pagesTotal):
-            DownloadFullPage(j, baseURL, offPages, regexFullPage)
+        for j in range(pages_total):
+            download_full_page(j, base_url, off_pages, REGEX_FULL_PAGE)
     print("Download finished.\r")
     sys.stdout.flush()
     # Starting converting
     print("Convert started.\r")
-    Parallel(n_jobs=int(20))(delayed(ConvertPage)(
-        j, baseName, pagesTotal, ratio, offPages) for j in range(pagesTotal))
+    Parallel(n_jobs=int(20))(delayed(convert_page)(
+        j, base_name, pages_total, off_pages) for j in range(pages_total))
     print("Convert finished.\r")
 
 
