@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python
 
 # Imports
 import subprocess
@@ -13,12 +13,15 @@ import shutil
 import http.client
 from PIL import Image
 from joblib import *
+from xml.etree import ElementTree as ET
 
 
 # Global Variables
 IMAGES_TOTAL = 72
-REGEX = r"(http:\/\/.+)(\d\d\d\d)_jpg_\/(\d)_(\d).jpg"
+REGEX_MAIN_URL = r"(.+)/\?id=viewer&doc=(\w+)%2F(\w+)%2F\w+%2F\w+%2F\w+%2F(\w+).xml.*page_ref=(\d+).*"
+REGEX = r"(http:\/\/.+\d\d\d\d_jpg_\/)(\d)_(\d+).jpg"
 REGEX_FULL_PAGE = r"(http:\/\/.+)(\d\d\d\d).jpg(.+)"
+REGEX_PATH = r".+(\d\d\d\d).jpg"
 RATIO = {72: 8, 70: 10, 67: 9, 56: 7, 54: 8, 49: 7, 48: 8, 45: 7, 42: 7, 40: 8, 36: 6,
          35: 7, 30: 6, 28: 7, 27: 9, 25: 5, 24: 6, 20: 5, 18: 3, 16: 4, 15: 5, 12: 3, 8: 8, 1: 1}
 
@@ -30,6 +33,63 @@ def download_image(url, img):
     except:
         return False
     return True
+
+
+def parse_main_url(url):
+    if re.search(REGEX_MAIN_URL, url):
+        match = re.search(REGEX_MAIN_URL, url)
+        base_url = match.group(1)
+        doc_1 = match.group(2)
+        doc_2 = match.group(3)
+        doc_3 = match.group(4)
+        page_ref = match.group(5)
+        return "http://" + base_url + "/" + doc_1 + "/" + doc_2 + "/datas/playlists/" + doc_3 + page_ref + ".xml"
+    else:
+        print('Can\'t match the url with the regex.')
+        exit(1)
+
+
+def process_main_url(url):
+    with urllib.request.urlopen(parse_main_url(url)) as response:
+        xml_content = response.read()
+        return parse_xml(xml_content)
+
+
+def modify_path(path):
+    if re.search(REGEX_PATH, path):
+        match = re.search(REGEX_PATH, path)
+        page_number = int(match.group(1))
+        if path.endswith('.jpg'):
+            path = path[:-4] + '_jpg_/3_0.jpg'
+            return (page_number, path)
+
+
+
+def parse_xml(xml_content):
+    xmldoc = ET.fromstring(xml_content)
+    url = xmldoc.attrib['host'] + xmldoc.attrib['basepath']
+    nb_pages = None
+    unit_id = None
+    date = None
+    location = None
+    path_pages_tuple_list = []
+    for elem in xmldoc:
+        if 't' == elem.tag:
+            unit_id = elem.attrib['unitid']
+            date = elem.text
+        if 'g' == elem.tag:
+            nb_pages = elem.attrib['nbi']
+            for page in elem:
+                if 't' == page.tag:
+                    location = page.text
+                if 'i' == page.tag:
+                    for sub_elem in page:
+                        if 'a' == sub_elem.tag:
+                            path_pages_tuple_list.append(modify_path(sub_elem.text))
+    name = unit_id + " - " + date + " - " + location
+    path_pages_tuple_list.sort(key=lambda x: x[0])
+    path_pages_list = [(index + 1, elem[1]) for index, elem in enumerate(path_pages_tuple_list)]
+    return url, name, nb_pages, path_pages_list
 
 
 def create_image(image_list, end_name, is_horizontal=True):
@@ -75,74 +135,65 @@ def check_url_exists(url):
     return True
 
 
-def initialize_zoom_variable(current_page, base_url, regex):
+def initialize_zoom_variable(base_url):
     # Start matching
-    if re.search(regex, base_url):
-        match = re.search(regex, base_url)
-        pageNumber = match.group(2)
-        tempZoom = match.group(3)
-        imageNumber = match.group(4)
-        newUrl = match.group(1) + "_" + str(int(pageNumber) + current_page).zfill(
-            4) + "_jpg_/" + str(int(tempZoom) + 1) + "_" + str(int(imageNumber)) + ".jpg"
+    if re.search(REGEX, base_url):
+        match = re.search(REGEX, base_url)
+        tempZoom = match.group(2)
+        imageNumber = match.group(3)
+        newUrl = match.group(1) + str(int(tempZoom) + 1) + "_" + str(int(imageNumber)) + ".jpg"
         if check_url_exists(newUrl) == True:
             zoom = int(tempZoom) + 1
             return zoom
-        newUrl = match.group(1) + "_" + str(int(pageNumber) + current_page).zfill(
-            4) + "_jpg_/" + str(tempZoom) + "_" + str(int(imageNumber)) + ".jpg"
+        newUrl = match.group(1) + str(tempZoom) + "_" + str(int(imageNumber)) + ".jpg"
         if check_url_exists(newUrl) == True:
             zoom = int(tempZoom)
             return zoom
-        newUrl = match.group(1) + "_" + str(int(pageNumber) + current_page).zfill(
-            4) + "_jpg_/" + str(int(tempZoom) - 1) + "_" + str(int(imageNumber)) + ".jpg"
+        newUrl = match.group(1) + str(int(tempZoom) - 1) + "_" + str(int(imageNumber)) + ".jpg"
         zoom = int(tempZoom) - 1
         return zoom
 
 
-def find_right_url(base_url, current_page, current_image, zoom, regex):
+def find_right_url(base_url, current_image, zoom):
     # Start matching
-    if re.search(regex, base_url):
-        match = re.search(regex, base_url)
-        pageNumber = match.group(2)
-        imageNumber = match.group(4)
-        newUrl = match.group(1) + "_" + str(int(pageNumber) + current_page).zfill(
-            4) + "_jpg_/" + str(zoom) + "_" + str(int(imageNumber) + current_image) + ".jpg"
+    if re.search(REGEX, base_url):
+        match = re.search(REGEX, base_url)
+        newUrl = match.group(1) + str(zoom) + "_" + str(current_image) + ".jpg"
         return newUrl
 
 
-def find_right_url_full_page(base_url, current_page, regex):
+def find_right_url_full_page(base_url, current_page):
     # Start matching
-    if re.search(regex, base_url):
-        match = re.search(regex, base_url)
+    if re.search(REGEX_FULL_PAGE, base_url):
+        match = re.search(REGEX_FULL_PAGE, base_url)
         pageNumber = match.group(2)
-        newUrl = match.group(1) + str(int(pageNumber) +
-                                      current_page).zfill(4) + ".jpg" + match.group(3)
+        newUrl = match.group(1) + str(int(pageNumber) + current_page).zfill(4) + ".jpg" + match.group(3)
         return newUrl
 
 
-def download_page(current_page, base_url, off_pages, regex):
+def download_page(current_page, url):
     # Download
-    os.makedirs("Page" + str(current_page + off_pages + 1), exist_ok=True)
-    os.chdir("Page" + str(current_page + off_pages + 1))
-    zoom = initialize_zoom_variable(current_page + off_pages, base_url, regex)
+    os.makedirs("Page" + str(current_page), exist_ok=True)
+    os.chdir("Page" + str(current_page))
+    zoom = initialize_zoom_variable(url)
     for current_image in range(0, IMAGES_TOTAL):
-        url = find_right_url(base_url, current_page + off_pages,
-                             current_image, zoom, regex)
+        url = find_right_url(url, current_image, zoom)
         error = download_image(url, str(current_image + 1) + ".jpg")
         if error == False:
             break
     os.chdir("..")
 
 
-def download_full_page(current_page, base_url, off_pages, regex):
+def download_full_page(current_page, base_url, off_pages):
     # Download
     os.makedirs("Page" + str(current_page + off_pages + 1), exist_ok=True)
     os.chdir("Page" + str(current_page + off_pages + 1))
-    url = find_right_url_full_page(base_url, current_page + off_pages, regex)
+    url = find_right_url_full_page(base_url, current_page + off_pages)
     error = download_image(url, "1.jpg")
     os.chdir("..")
 
 
-def convert_page(current_page, base_name, pages_total, off_pages):
+def convert_page(current_page, base_name, off_pages):
     # Convertion
     os.chdir("Page" + str(current_page + off_pages + 1))
     fileNumber = len(os.listdir(os.getcwd()))
@@ -188,21 +239,23 @@ def main(argv):
     off_pages = args.off_pages
     fullpage = args.fullpage
     # Starting download
-    os.makedirs(base_name, exist_ok=True)
-    os.chdir(base_name)
     print("Download started.\r")
     if fullpage == False:
-        Parallel(n_jobs=int(20))(delayed(download_page)(
-            j, base_url, off_pages, REGEX) for j in range(pages_total))
+        base_url, base_name, pages_total, path_pages_list = process_main_url(base_url)
+        os.makedirs(base_name, exist_ok=True)
+        os.chdir(base_name)
+        Parallel(n_jobs=int(20))(delayed(download_page)(page_tuple[0], base_url + page_tuple[1]) for page_tuple in path_pages_list)
     else:
+        os.makedirs(base_name, exist_ok=True)
+        os.chdir(base_name)
         for j in range(pages_total):
-            download_full_page(j, base_url, off_pages, REGEX_FULL_PAGE)
+            download_full_page(j, base_url, off_pages)
     print("Download finished.\r")
     sys.stdout.flush()
     # Starting converting
     print("Convert started.\r")
     Parallel(n_jobs=int(20))(delayed(convert_page)(
-        j, base_name, pages_total, off_pages) for j in range(pages_total))
+        j, base_name, off_pages) for j in range(int(pages_total)))
     print("Convert finished.\r")
 
 
